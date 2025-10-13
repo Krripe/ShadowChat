@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.krripe.shadowchat.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "PlayerManagerMixin",
+    "PlayerTabNameMixin",
+    "ServerPlayerEntityMixin",
+    "commands.MeCommandMixin",
+    "commands.MessageCommandMixin",
+    "commands.SayCommandMixin"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
