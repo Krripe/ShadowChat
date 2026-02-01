@@ -13,7 +13,7 @@ object BadWordManager {
     private val playerOffenses = mutableMapOf<UUID, Int>()
     private var config = BadWordsConfig()
 
-    fun loadConfig() {
+    fun load() {
         if (!configFile.exists()) {
             configFile.parentFile.mkdirs()
             configFile.writeText(gson.toJson(config))

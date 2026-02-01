@@ -3,7 +3,7 @@ package org.krripe.shadowchat.command
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.minecraft.server.command.CommandManager.*
-import net.minecraft.text.Text
+import org.krripe.shadowchat.config.MessageManager
 import org.krripe.shadowchat.manager.SpyManager
 import org.krripe.shadowchat.utils.PermissionsSystem
 
@@ -22,8 +22,9 @@ object SpyChatCommand {
                             val wantOn = StringArgumentType.getString(ctx, "state").equals("on", true)
                             val nowOn = SpyManager.isSpying(p)
                             if (wantOn != nowOn) SpyManager.toggle(p)
+
                             ctx.source.sendFeedback(
-                                { Text.literal("§eSpyChat ${if (wantOn) "enabled" else "disabled"}") },
+                                { MessageManager.get(ctx.source, if (wantOn) "spyEnabled" else "spyDisabled") },
                                 false
                             )
                             1
@@ -31,8 +32,9 @@ object SpyChatCommand {
                     .executes { ctx ->
                         val p = ctx.source.playerOrThrow
                         val enabled = SpyManager.toggle(p)
+
                         ctx.source.sendFeedback(
-                            { Text.literal("§eSpyChat ${if (enabled) "enabled" else "disabled"}") },
+                            { MessageManager.get(ctx.source, if (enabled) "spyEnabled" else "spyDisabled") },
                             false
                         )
                         1

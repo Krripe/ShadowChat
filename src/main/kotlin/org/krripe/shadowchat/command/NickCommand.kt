@@ -3,7 +3,7 @@ package org.krripe.shadowchat.command
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.minecraft.server.command.CommandManager
-import net.minecraft.text.Text
+import org.krripe.shadowchat.config.MessageManager
 import org.krripe.shadowchat.manager.NicknameManager
 import org.krripe.shadowchat.manager.TabListManager
 import org.krripe.shadowchat.utils.PermissionsSystem
@@ -21,9 +21,14 @@ object NickCommand {
                         .executes { ctx ->
                             val player = ctx.source.playerOrThrow
                             val nickname = StringArgumentType.getString(ctx, "nickname")
+
                             NicknameManager.setNickname(player, nickname)
                             TabListManager.pushDisplayNameUpdate(player)
-                            ctx.source.sendFeedback({ Text.literal("§aNickname set to: $nickname") }, false)
+
+                            ctx.source.sendFeedback(
+                                { MessageManager.get(ctx.source, "nickSet", "nickname" to nickname) },
+                                false
+                            )
                             1
                         })
 
@@ -33,7 +38,8 @@ object NickCommand {
                             val player = ctx.source.playerOrThrow
                             NicknameManager.resetNickname(player)
                             TabListManager.pushDisplayNameUpdate(player)
-                            ctx.source.sendFeedback({ Text.literal("§cNickname reset.") }, false)
+
+                            ctx.source.sendFeedback({ MessageManager.get(ctx.source, "nickReset") }, false)
                             1
                         })
             )

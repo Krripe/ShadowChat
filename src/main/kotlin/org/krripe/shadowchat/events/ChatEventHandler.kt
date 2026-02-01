@@ -3,64 +3,110 @@ package org.krripe.shadowchat.events
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
-import org.krripe.shadowchat.api.ShadowChat
 import org.krripe.shadowchat.api.ChatPreEvent
+import org.krripe.shadowchat.api.ShadowChat
 import org.krripe.shadowchat.compat.TriviaCompat
 import org.krripe.shadowchat.config.ConfigManager
 import org.krripe.shadowchat.manager.*
 import org.krripe.shadowchat.utils.FormatPermissionFilter
+import org.krripe.shadowchat.utils.PermissionsSystem
+import org.krripe.shadowchat.utils.RunLater
 
 object ChatEventHandler {
-    fun registerEvents() {
+
+    private val perms = PermissionsSystem()
+
+    fun register() {
+
         ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
             server.execute {
                 val p = handler.player
+
                 val joinMsg = ChatFormatManager.getJoinMessage(p)
-                server.playerManager.broadcast(joinMsg, false)
+
+                val motdCfg = ConfigManager.chatConfig.joinMotd
+                val motdEnabled = motdCfg.enabled && motdCfg.lines.any { it.isNotBlank() }
+                val sendBefore = motdEnabled && motdCfg.sendBeforeJoinMessage
+
+                if (sendBefore) {
+                    for (online in server.playerManager.playerList) {
+                        if (online !== p) online.sendMessage(joinMsg, false)
+                    }
+                } else {
+                    server.playerManager.broadcast(joinMsg, false)
+                }
 
                 try {
                     ShadowChat.get().fireJoin(p, joinMsg)
-                } catch (_: Throwable) {  }
+                } catch (_: Throwable) { }
 
                 if (ConfigManager.chatConfig.chatSystems.tab) {
                     TabListManager.sendHeaderFooter(p)
+                }
+
+                WeightManager.applyTeam(p)
+
+                if (ConfigManager.chatConfig.chatSystems.tab) {
                     TabListManager.pushDisplayNameUpdate(p)
                 }
-                if (ConfigManager.chatConfig.chatSystems.weights) {
-                    WeightManager.applyTeam(p)
-                }
+
+                try {
+                    if (motdEnabled) {
+                        val delay = motdCfg.sendAfterTicks.coerceAtLeast(0)
+                        val sendBlock = {
+                            JoinMotdManager.send(p)
+                            if (sendBefore) {
+                                p.sendMessage(joinMsg, false)
+                            }
+                        }
+
+                        if (delay <= 0) sendBlock()
+                        else RunLater.run(server, delay) { sendBlock() }
+                    }
+                } catch (_: Throwable) { }
             }
 
             NicknameManager.getRaw(handler.player)?.let {
                 NicknameManager.setNickname(handler.player, it)
+
+                try {
+                    WeightManager.applyTeam(handler.player)
+                    if (ConfigManager.chatConfig.chatSystems.tab) {
+                        TabListManager.pushDisplayNameUpdate(handler.player)
+                    }
+                } catch (_: Throwable) { }
             }
         }
 
         ServerLifecycleEvents.SERVER_STARTED.register { srv ->
-            if (ConfigManager.chatConfig.chatSystems.weights) {
-                WeightManager.refreshAll(srv)
+
+            WeightManager.refreshAll(srv)
+
+            if (ConfigManager.chatConfig.chatSystems.tab) {
+                TabListManager.refreshAll(srv)
             }
         }
 
         ServerPlayConnectionEvents.DISCONNECT.register { handler, server ->
-            val leaveMsg = ChatFormatManager.getLeaveMessage(handler.player)
+            val player = handler.player
+            val leaveMsg = ChatFormatManager.getLeaveMessage(player)
             server.playerManager.broadcast(leaveMsg, false)
 
             try {
-                ShadowChat.get().fireLeave(handler.player, leaveMsg)
+                ShadowChat.get().fireLeave(player, leaveMsg)
             } catch (_: Throwable) { }
         }
 
-        ServerMessageEvents.ALLOW_CHAT_MESSAGE.register { message, sender, _ ->
+        ServerMessageEvents.ALLOW_CHAT_MESSAGE.register { signed, sender, params ->
 
             val api = try { ShadowChat.get() } catch (_: Throwable) { null }
 
-            val pre = api?.fireChatPre(ChatPreEvent(sender, message.signedContent))
+            val pre = api?.fireChatPre(ChatPreEvent(sender, signed.signedContent))
             if (pre?.cancel == true) {
                 return@register false
             }
 
-            val effectiveRaw = pre?.message ?: message.signedContent
+            val effectiveRaw = pre?.message ?: signed.signedContent
             val bypass = pre?.bypassFilters == true
 
             if (!bypass && ConfigManager.chatConfig.chatSystems.spam && SpamManager.shouldBlock(sender)) {
@@ -88,10 +134,24 @@ object ChatEventHandler {
             MentionManager.handleMentions(censored, sender)
             LogManager.logChat(sender, original)
 
-            sender.server.playerManager.broadcast(formatted, false)
+            val bypassIgnore = perms.hasPermission(sender.commandSource, "shadowchat.ignore.bypass")
+
+            for (viewer in sender.server.playerManager.playerList) {
+                if (viewer === sender) {
+                    viewer.sendMessage(formatted, false)
+                    continue
+                }
+
+                if (!bypassIgnore && IgnoreManager.isIgnoring(viewer.uuid, sender.uuid)) continue
+                viewer.sendMessage(formatted, false)
+            }
 
             try {
                 api?.fireChatPost(sender, formatted)
+            } catch (_: Throwable) { }
+
+            try {
+                ServerMessageEvents.CHAT_MESSAGE.invoker().onChatMessage(signed, sender, params)
             } catch (_: Throwable) { }
 
             false

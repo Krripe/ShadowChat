@@ -15,44 +15,54 @@ object ChatFormatManager {
 
     private fun getRankFormat(player: ServerPlayerEntity): RankFormat? {
         if (!ConfigManager.chatConfig.chatSystems.rankFormat) return null
-
         return ConfigManager.chatConfig.rankFormats.firstOrNull { format ->
-            val hasPerm = perms.hasPermission(player.commandSource, format.rankPermission)
-            hasPerm
+            perms.hasPermission(player.commandSource, format.rankPermission)
         }
+    }
+
+    private fun buildDisplayName(player: ServerPlayerEntity, rank: RankFormat?): Text {
+        val ctx = PlaceholderContext.of(player)
+
+        val nickRaw = NicknameManager.getRaw(player)
+        if (!nickRaw.isNullOrBlank()) {
+            return Placeholders.parseText(
+                CustomColorParser.processAllFormats(nickRaw),
+                ctx
+            )
+        }
+
+        val template = rank?.rankDisplayName?.takeIf { it.isNotBlank() }
+            ?: ConfigManager.chatConfig.displayName
+
+        val raw = template.replace("%player:name%", player.name.string)
+
+        return Placeholders.parseText(
+            CustomColorParser.processAllFormats(raw),
+            ctx
+        )
     }
 
     fun getChatMessage(player: ServerPlayerEntity, rawMessage: String): Text {
-
-        return if (ConfigManager.chatConfig.chatSystems.rankFormat) {
+        if (ConfigManager.chatConfig.chatSystems.rankFormat) {
             val rankFormat = getRankFormat(player)
             if (rankFormat != null) {
-                getRankChatMessage(player, rawMessage, rankFormat)
-            } else {
-                getDefaultChatMessage(player, rawMessage)
+                return getFormatted(player, rawMessage, rankFormat.rankChatFormat, rankFormat)
             }
-        } else {
-            getDefaultChatMessage(player, rawMessage)
         }
+        return getFormatted(player, rawMessage, ConfigManager.chatConfig.chatFormat, null)
     }
 
-    private fun getRankChatMessage(
-        player: ServerPlayerEntity,
-        rawMessage: String,
-        format: RankFormat
-    ): Text {
-        val displayText: Text = NicknameManager.getNickname(player)
-
-        val parts = format.rankChatFormat.split("\${display_name}")
-        val beforeRaw = parts.getOrNull(0) ?: ""
-        val afterRaw  = (parts.getOrNull(1) ?: "").replace("\${message}", rawMessage)
+    private fun getFormatted(player: ServerPlayerEntity, rawMessage: String, formatRaw: String, rank: RankFormat?): Text {
+        val displayText = buildDisplayName(player, rank)
+        val (beforeRaw, afterRaw) = splitOnDisplayToken(formatRaw)
 
         val before = Placeholders.parseText(
             CustomColorParser.processAllFormats(beforeRaw),
             PlaceholderContext.of(player)
         )
-        val after  = Placeholders.parseText(
-            CustomColorParser.processAllFormats(afterRaw),
+
+        val after = Placeholders.parseText(
+            CustomColorParser.processAllFormats(replaceMessageTokens(afterRaw, rawMessage)),
             PlaceholderContext.of(player)
         )
 
@@ -62,45 +72,39 @@ object ChatFormatManager {
             .append(after)
     }
 
-    private fun getDefaultChatMessage(
-        player: ServerPlayerEntity,
-        rawMessage: String
-    ): Text {
-        val displayText: Text = NicknameManager.getNickname(player)
+    private fun splitOnDisplayToken(raw: String): Pair<String, String> {
+        val tokens = listOf("\${display_name}", "\\\${display_name}")
 
-        val parts = ConfigManager.chatConfig.chatFormat.split("\${display_name}")
-        val beforeRaw = parts.getOrNull(0) ?: ""
-        val afterRaw  = (parts.getOrNull(1) ?: "").replace("\${message}", rawMessage)
+        for (t in tokens) {
+            val idx = raw.indexOf(t)
+            if (idx >= 0) {
+                val before = raw.substring(0, idx)
+                val after = raw.substring(idx + t.length)
+                return before to after
+            }
+        }
 
-        val before = Placeholders.parseText(
-            CustomColorParser.processAllFormats(beforeRaw),
-            PlaceholderContext.of(player)
-        )
-        val after  = Placeholders.parseText(
-            CustomColorParser.processAllFormats(afterRaw),
-            PlaceholderContext.of(player)
-        )
+        val cleaned = raw
+            .replace("\${display_name}", "")
+            .replace("\\\${display_name}", "")
 
-        return Text.literal("")
-            .append(before)
-            .append(displayText)
-            .append(after)
+        return cleaned to ""
     }
 
-    fun getJoinMessage(player: ServerPlayerEntity): Text {
-        return parseFormat(ConfigManager.chatConfig.joinMessage, player)
+    private fun replaceMessageTokens(raw: String, msg: String): String {
+        return raw
+            .replace("\${message}", msg)
+            .replace("\\\${message}", msg)
     }
 
-    fun getLeaveMessage(player: ServerPlayerEntity): Text {
-        return parseFormat(ConfigManager.chatConfig.leaveMessage, player)
-    }
+    fun getJoinMessage(player: ServerPlayerEntity): Text =
+        parseFormat(ConfigManager.chatConfig.joinMessage, player)
+
+    fun getLeaveMessage(player: ServerPlayerEntity): Text =
+        parseFormat(ConfigManager.chatConfig.leaveMessage, player)
 
     private fun parseFormat(input: String, player: ServerPlayerEntity): Text {
-        val withNick = input.replace(
-            "%player:name%",
-            NicknameManager.getDisplayName(player)
-        )
-
+        val withNick = input.replace("%player:name%", NicknameManager.getDisplayName(player))
         val colored = CustomColorParser.processAllFormats(withNick)
         return Placeholders.parseText(colored, PlaceholderContext.of(player))
     }
@@ -108,6 +112,8 @@ object ChatFormatManager {
     fun getDeathMessage(player: ServerPlayerEntity, default: Text): Text {
         val raw = ConfigManager.chatConfig.baseDeath
             .replace("\${default_message}", default.string)
+            .replace("\\\${default_message}", default.string)
+
         return parseFormat(raw, player)
     }
 }

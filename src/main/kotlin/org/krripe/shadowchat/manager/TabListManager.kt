@@ -10,12 +10,48 @@ import net.minecraft.text.Text
 import org.krripe.shadowchat.config.ConfigManager
 import org.krripe.shadowchat.utils.CustomColorParser
 import org.krripe.shadowchat.bridge.PlaceholderBridge
+import org.krripe.shadowchat.config.RankFormat
+import org.krripe.shadowchat.utils.PermissionsSystem
 import java.util.EnumSet
 
 object TabListManager {
 
     private fun isTabEnabled() = ConfigManager.chatConfig.chatSystems.tab
 
+    private val perms = PermissionsSystem()
+
+    private fun getRankFormat(p: ServerPlayerEntity): RankFormat? {
+        if (!ConfigManager.chatConfig.chatSystems.rankFormat) return null
+        return ConfigManager.chatConfig.rankFormats.firstOrNull { rf ->
+            perms.hasPermission(p.commandSource, rf.rankPermission)
+        }
+    }
+
+    private fun buildDisplayNameForTab(p: ServerPlayerEntity): Text {
+        val ctx = PlaceholderContext.of(p)
+
+        val nickRaw = NicknameManager.getRaw(p)
+        if (!nickRaw.isNullOrBlank()) {
+            val nick = nickRaw.replace("%player:name%", p.name.string)
+            val bridged = PlaceholderBridge.apply(p, nick)
+            return Placeholders.parseText(CustomColorParser.processAllFormats(bridged), ctx)
+        }
+
+        val rank = getRankFormat(p)
+        val template = rank?.rankDisplayName?.takeIf { it.isNotBlank() } ?: ConfigManager.chatConfig.displayName
+
+        val raw = template.replace("%player:name%", p.name.string)
+        val bridged = PlaceholderBridge.apply(p, raw)
+
+        return Placeholders.parseText(CustomColorParser.processAllFormats(bridged), ctx)
+    }
+
+    private fun applyBasicReplacements(p: ServerPlayerEntity, s: String): String {
+        return s
+            .replace("%nickname%", NicknameManager.getDisplayName(p))
+            .replace("%display_name%", NicknameManager.getDisplayName(p)) // keep old behavior
+            .replace("%name%", p.name.string)
+    }
 
     private fun parse(lines: List<String>, ctx: PlaceholderContext): Text {
         val joined = lines.joinToString("\n")
@@ -27,19 +63,47 @@ object TabListManager {
     }
 
     fun entryText(p: ServerPlayerEntity): Text {
-        val cfg  = ConfigManager.chatConfig.tab
-        val nick = NicknameManager.getDisplayName(p)
+        val cfg = ConfigManager.chatConfig.tab
+        val fmt = cfg.playerFormat
+        val ctx = PlaceholderContext.of(p)
 
-        var raw = cfg.playerFormat
-            .replace("%nickname%",     nick)
-            .replace("%display_name%", nick)
-            .replace("%name%",         p.name.string)
+        val tokens = listOf(
+            "\${displayname}",
+            "\\\${displayname}",
+            "\${display_name}",
+            "\\\${display_name}",
+            "%displayname%",
+            "%display_name%",
+            "%display_name%"
+        )
 
+        val token = tokens.firstOrNull { fmt.contains(it) }
+
+        if (token != null) {
+            val idx = fmt.indexOf(token)
+            val before0 = fmt.substring(0, idx)
+            val after0 = fmt.substring(idx + token.length)
+
+            val beforeStr = PlaceholderBridge.apply(p, applyBasicReplacements(p, before0))
+            val afterStr = PlaceholderBridge.apply(p, applyBasicReplacements(p, after0))
+
+            val before = Placeholders.parseText(CustomColorParser.processAllFormats(beforeStr), ctx)
+            val after = Placeholders.parseText(CustomColorParser.processAllFormats(afterStr), ctx)
+
+            val displayText = buildDisplayNameForTab(p)
+
+            return Text.literal("")
+                .append(before)
+                .append(displayText)
+                .append(after)
+        }
+
+        var raw = applyBasicReplacements(p, fmt)
         raw = PlaceholderBridge.apply(p, raw)
 
         return Placeholders.parseText(
             CustomColorParser.processAllFormats(raw),
-            PlaceholderContext.of(p)
+            ctx
         )
     }
 
