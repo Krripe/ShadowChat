@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.minecraft.server.command.CommandManager
 import org.krripe.shadowchat.config.ConfigManager
 import org.krripe.shadowchat.config.MessageManager
+import org.krripe.shadowchat.config.PrefixConfigManager
 import org.krripe.shadowchat.manager.*
 import org.krripe.shadowchat.utils.PermissionsSystem
 
@@ -22,7 +23,9 @@ object ChatCommands {
                             .executes { ctx ->
                                 ConfigManager.load()
                                 MessageManager.load()
+                                PrefixConfigManager.load()
                                 BadWordManager.load()
+                                PrefixManager.onConfigReload(ctx.source.server)
                                 TabListManager.refreshAll(ctx.source.server)
                                 WeightManager.refreshAll(ctx.source.server)
                                 AnnouncementManager.onConfigReload(ctx.source.server)

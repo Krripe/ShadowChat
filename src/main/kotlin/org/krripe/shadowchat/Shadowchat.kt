@@ -8,14 +8,17 @@ import org.krripe.shadowchat.api.impl.DefaultShadowChatAPI
 import org.krripe.shadowchat.command.ChatCommands
 import org.krripe.shadowchat.command.IgnoreCommand
 import org.krripe.shadowchat.command.NickCommand
+import org.krripe.shadowchat.command.PrefixCommand
 import org.krripe.shadowchat.command.ReplyCommand
 import org.krripe.shadowchat.command.SpyChatCommand
 import org.krripe.shadowchat.config.ConfigManager
 import org.krripe.shadowchat.config.MessageManager
+import org.krripe.shadowchat.config.PrefixConfigManager
 import org.krripe.shadowchat.events.ChatEventHandler
 import org.krripe.shadowchat.manager.AnnouncementManager
 import org.krripe.shadowchat.manager.BadWordManager
 import org.krripe.shadowchat.manager.NicknameManager
+import org.krripe.shadowchat.manager.PrefixManager
 import org.krripe.shadowchat.utils.RunLater
 import org.krripe.shadowchat.utils.TabAutoRefresher
 
@@ -23,6 +26,7 @@ class Shadowchat : ModInitializer {
     override fun onInitialize() {
         ConfigManager.load()
         MessageManager.load()
+        PrefixConfigManager.load()
         NicknameManager.load()
         BadWordManager.load()
 
@@ -31,6 +35,7 @@ class Shadowchat : ModInitializer {
         NickCommand.register()
         SpyChatCommand.register()
         ReplyCommand.register()
+        PrefixCommand.register()
 
         TabAutoRefresher.init()
         AnnouncementManager.init()
@@ -45,6 +50,8 @@ class Shadowchat : ModInitializer {
         }
 
         ServerLifecycleEvents.SERVER_STOPPED.register {
+            PrefixManager.saveAll()
+            PrefixConfigManager.save()
             ConfigManager.save()
         }
     }

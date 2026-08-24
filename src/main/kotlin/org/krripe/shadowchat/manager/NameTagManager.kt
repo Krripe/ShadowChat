@@ -1,13 +1,10 @@
 package org.krripe.shadowchat.manager
 
-import eu.pb4.placeholders.api.PlaceholderContext
-import eu.pb4.placeholders.api.Placeholders
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
 import net.minecraft.util.Formatting
 import org.krripe.shadowchat.bridge.PlaceholderBridge
 import org.krripe.shadowchat.config.ConfigManager
-import org.krripe.shadowchat.utils.CustomColorParser
 import java.util.UUID
 
 object NameTagManager {
@@ -22,18 +19,21 @@ object NameTagManager {
         if (value == null) overrideSuffix.remove(p.uuid) else overrideSuffix[p.uuid] = value
     }
 
-    private fun parse(raw: String, p: ServerPlayerEntity): Text {
-        var s = raw
+    private fun parse(
+        raw: String,
+        p: ServerPlayerEntity
+    ): Text {
+        val value = raw
             .replace("%player:name%", p.name.string)
             .replace("%name%", p.name.string)
             .replace("%nickname%", NicknameManager.getDisplayName(p))
             .replace("%displayname%", NicknameManager.getDisplayName(p))
             .replace("%display_name%", NicknameManager.getDisplayName(p))
 
-        s = PlaceholderBridge.apply(p, s)
-        val colored = CustomColorParser.processAllFormats(s)
-
-        return Placeholders.parseText(colored, PlaceholderContext.of(p))
+        return PrefixManager.parseWithPrefixes(
+            p,
+            value
+        )
     }
 
     private fun fromConfigPrefix(p: ServerPlayerEntity): Text {

@@ -4,6 +4,7 @@
   "package": "org.krripe.shadowchat.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "CommandManagerMixin",
     "PlayerManagerMixin",
     "PlayerTabNameMixin",
     "ServerPlayerEntityMixin",

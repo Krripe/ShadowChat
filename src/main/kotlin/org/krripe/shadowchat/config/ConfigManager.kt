@@ -72,6 +72,7 @@ object ConfigManager {
         }
 
         val existingObj = parsed.asJsonObject
+        migrateLegacyConfig(existingObj)
         val defaultsObj = gson.toJsonTree(ChatConfig()).asJsonObject
         val merged = deepMerge(existingObj, defaultsObj)
 
@@ -154,6 +155,34 @@ object ConfigManager {
             }
         }
     }
+
+    private fun migrateLegacyConfig(root: JsonObject) {
+        val commandLogsObject =
+            root.get("commandLogs")
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
+                ?: return
+
+        val oldEnabled =
+            commandLogsObject.get("enabled")
+                ?.takeIf {
+                    it.isJsonPrimitive &&
+                            it.asJsonPrimitive.isBoolean
+                }
+                ?: return
+
+        val chatSystemsObject =
+            root.get("chatSystems")
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
+                ?: JsonObject().also {
+                    root.add("chatSystems", it)
+                }
+
+        if (!chatSystemsObject.has("commandLogs")) {
+            chatSystemsObject.add("commandLogs", oldEnabled.deepCopy())
+        }
+    }
 }
 
 data class ChatConfig(
@@ -163,15 +192,59 @@ data class ChatConfig(
     val leaveMessage: String = "<#FFD700>%player:name% left the server!</#>",
     val baseDeath: String = "<#424242>☠</#> <#a9a9a9>\${default_message}</#>",
     val commandFormats: CommandFormats = CommandFormats(),
+    val displayNameHover: DisplayNameHoverConfig = DisplayNameHoverConfig(),
     val advancementFormats: AdvancementFormats = AdvancementFormats(),
+    val joinLeaveMessages: JoinLeaveMessagesConfig = JoinLeaveMessagesConfig(),
+    val deathMessage: DeathMessageConfig = DeathMessageConfig(),
     val mentionFormats: MentionFormats = MentionFormats(),
     val nameTag: NameTagConfig = NameTagConfig(),
     val chatSystems: ChatSystems = ChatSystems(),
+    val nickSettings: NickSettings = NickSettings(),
     val rankFormats: List<RankFormat> = listOf(),
     val spam: SpamConfig = SpamConfig(),
     val tab: TabListConfig = TabListConfig(),
     val tabSettings: TabSettings = TabSettings(),
-    val joinMotd: JoinMotdConfig = JoinMotdConfig()
+    val joinMotd: JoinMotdConfig = JoinMotdConfig(),
+    val commandLogs: CommandLogConfig = CommandLogConfig()
+)
+
+data class DisplayNameHoverConfig(
+    val enabled: Boolean = false,
+    val lines: List<String> = listOf(
+        "<#AA55FF><b>%player:name%</b></#>",
+        "<#AAAAAA>Rank:</#> %luckperms:prefix%",
+        "<#AAAAAA>Online:</#> <#55FF55>%server:online%</#>",
+        "",
+        "<#55FF55>Click to private message %player:name%</#>"
+    ),
+    val clickable: Boolean = true,
+    val clickAction: String = "suggest_command",
+    val clickValue: String = "/msg %player:name% "
+)
+
+data class NickSettings(
+    val maxLength: Int = 16
+)
+
+data class JoinLeaveMessagesConfig(
+    val enabled: Boolean = true,
+    val useVanillaIfBlank: Boolean = true
+)
+
+data class DeathMessageConfig(
+    val enabled: Boolean = true,
+    val useVanillaIfBlank: Boolean = true
+)
+
+data class CommandLogConfig(
+    val logConsoleCommands: Boolean = false,
+    val logArguments: Boolean = true,
+    val ignoredCommands: List<String> = listOf(
+        "warp",
+        "tpa",
+        "home",
+        "balance"
+    )
 )
 
 data class CommandFormats(
@@ -210,6 +283,7 @@ data class RankFormat(
 data class ChatSystems(
     val announcements: Boolean = true,
     val logMessages: Boolean = true,
+    val commandLogs: Boolean = true,
     val rankFormat: Boolean = true,
     val spam: Boolean = true,
     val tab: Boolean = true,

@@ -22,23 +22,32 @@ object ChatEventHandler {
             server.execute {
                 val p = handler.player
 
+                PrefixManager.ensureLoaded(p)
+
+                val joinLeaveCfg = ConfigManager.chatConfig.joinLeaveMessages
+                val customJoinEnabled =
+                    joinLeaveCfg.enabled &&
+                            ConfigManager.chatConfig.joinMessage.isNotBlank()
+
                 val joinMsg = ChatFormatManager.getJoinMessage(p)
 
                 val motdCfg = ConfigManager.chatConfig.joinMotd
                 val motdEnabled = motdCfg.enabled && motdCfg.lines.any { it.isNotBlank() }
-                val sendBefore = motdEnabled && motdCfg.sendBeforeJoinMessage
+                val sendBefore = motdEnabled && customJoinEnabled && motdCfg.sendBeforeJoinMessage
 
-                if (sendBefore) {
-                    for (online in server.playerManager.playerList) {
-                        if (online !== p) online.sendMessage(joinMsg, false)
+                if (customJoinEnabled) {
+                    if (sendBefore) {
+                        for (online in server.playerManager.playerList) {
+                            if (online !== p) online.sendMessage(joinMsg, false)
+                        }
+                    } else {
+                        server.playerManager.broadcast(joinMsg, false)
                     }
-                } else {
-                    server.playerManager.broadcast(joinMsg, false)
-                }
 
-                try {
-                    ShadowChat.get().fireJoin(p, joinMsg)
-                } catch (_: Throwable) { }
+                    try {
+                        ShadowChat.get().fireJoin(p, joinMsg)
+                    } catch (_: Throwable) { }
+                }
 
                 if (ConfigManager.chatConfig.chatSystems.tab) {
                     TabListManager.sendHeaderFooter(p)
@@ -55,6 +64,7 @@ object ChatEventHandler {
                         val delay = motdCfg.sendAfterTicks.coerceAtLeast(0)
                         val sendBlock = {
                             JoinMotdManager.send(p)
+
                             if (sendBefore) {
                                 p.sendMessage(joinMsg, false)
                             }
@@ -89,12 +99,22 @@ object ChatEventHandler {
 
         ServerPlayConnectionEvents.DISCONNECT.register { handler, server ->
             val player = handler.player
-            val leaveMsg = ChatFormatManager.getLeaveMessage(player)
-            server.playerManager.broadcast(leaveMsg, false)
 
-            try {
-                ShadowChat.get().fireLeave(player, leaveMsg)
-            } catch (_: Throwable) { }
+            val joinLeaveCfg = ConfigManager.chatConfig.joinLeaveMessages
+            val customLeaveEnabled =
+                joinLeaveCfg.enabled &&
+                        ConfigManager.chatConfig.leaveMessage.isNotBlank()
+
+            if (customLeaveEnabled) {
+                val leaveMsg = ChatFormatManager.getLeaveMessage(player)
+                server.playerManager.broadcast(leaveMsg, false)
+
+                try {
+                    ShadowChat.get().fireLeave(player, leaveMsg)
+                } catch (_: Throwable) { }
+            }
+
+            PrefixManager.unload(player)
         }
 
         ServerMessageEvents.ALLOW_CHAT_MESSAGE.register { signed, sender, params ->

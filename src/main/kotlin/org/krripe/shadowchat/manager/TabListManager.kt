@@ -65,7 +65,6 @@ object TabListManager {
     fun entryText(p: ServerPlayerEntity): Text {
         val cfg = ConfigManager.chatConfig.tab
         val fmt = cfg.playerFormat
-        val ctx = PlaceholderContext.of(p)
 
         val tokens = listOf(
             "\${displayname}",
@@ -73,7 +72,6 @@ object TabListManager {
             "\${display_name}",
             "\\\${display_name}",
             "%displayname%",
-            "%display_name%",
             "%display_name%"
         )
 
@@ -84,11 +82,18 @@ object TabListManager {
             val before0 = fmt.substring(0, idx)
             val after0 = fmt.substring(idx + token.length)
 
-            val beforeStr = PlaceholderBridge.apply(p, applyBasicReplacements(p, before0))
-            val afterStr = PlaceholderBridge.apply(p, applyBasicReplacements(p, after0))
+            val beforeStr = applyBasicReplacements(p, before0)
+            val afterStr = applyBasicReplacements(p, after0)
 
-            val before = Placeholders.parseText(CustomColorParser.processAllFormats(beforeStr), ctx)
-            val after = Placeholders.parseText(CustomColorParser.processAllFormats(afterStr), ctx)
+            val before = PrefixManager.parseWithPrefixes(
+                p,
+                beforeStr
+            )
+
+            val after = PrefixManager.parseWithPrefixes(
+                p,
+                afterStr
+            )
 
             val displayText = buildDisplayNameForTab(p)
 
@@ -98,12 +103,11 @@ object TabListManager {
                 .append(after)
         }
 
-        var raw = applyBasicReplacements(p, fmt)
-        raw = PlaceholderBridge.apply(p, raw)
+        val raw = applyBasicReplacements(p, fmt)
 
-        return Placeholders.parseText(
-            CustomColorParser.processAllFormats(raw),
-            ctx
+        return PrefixManager.parseWithPrefixes(
+            p,
+            raw
         )
     }
 

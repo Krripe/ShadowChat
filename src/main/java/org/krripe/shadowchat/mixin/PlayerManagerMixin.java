@@ -4,6 +4,7 @@ import net.minecraft.server.PlayerManager;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.text.TranslatableTextContent;
+import org.krripe.shadowchat.config.ConfigManager;
 import org.krripe.shadowchat.manager.AdvancementFormatManager;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -18,55 +19,97 @@ import java.util.List;
 @Mixin(PlayerManager.class)
 public class PlayerManagerMixin {
 
-    @Shadow @Final private List<ServerPlayerEntity> players;
+    @Shadow
+    @Final
+    private List<ServerPlayerEntity> players;
 
-    @Inject(method = "broadcast(Lnet/minecraft/text/Text;Z)V", at = @At("HEAD"), cancellable = true)
-    private void shadowchat$interceptBroadcast(Text message, boolean overlay, CallbackInfo ci) {
-
-        if (!(message.getContent() instanceof TranslatableTextContent translatable)) return;
-
-        String key = translatable.getKey();
-        if (key == null) return;
-
-        if (key.equals("multiplayer.player.joined") || key.equals("multiplayer.player.left")) {
-            ci.cancel();
+    @Inject(
+            method = "broadcast(Lnet/minecraft/text/Text;Z)V",
+            at = @At("HEAD"),
+            cancellable = true
+    )
+    private void shadowchat$interceptBroadcast(
+            Text message,
+            boolean overlay,
+            CallbackInfo ci
+    ) {
+        if (!(message.getContent() instanceof TranslatableTextContent translatable)) {
             return;
         }
 
-        if (!key.startsWith("chat.type.advancement.")) return;
+        String key = translatable.getKey();
+        if (key == null) {
+            return;
+        }
+
+        if (
+                key.equals("multiplayer.player.joined")
+                        || key.equals("multiplayer.player.left")
+        ) {
+            var cfg = ConfigManager.INSTANCE.getChatConfig();
+            var joinLeave = cfg.getJoinLeaveMessages();
+
+            boolean isJoin = key.equals("multiplayer.player.joined");
+
+            String customMessage = isJoin
+                    ? cfg.getJoinMessage()
+                    : cfg.getLeaveMessage();
+
+            boolean shouldCancelVanilla =
+                    !joinLeave.getEnabled()
+                            || !customMessage.isBlank()
+                            || !joinLeave.getUseVanillaIfBlank();
+
+            if (shouldCancelVanilla) {
+                ci.cancel();
+            }
+
+            return;
+        }
+
+        if (!key.startsWith("chat.type.advancement.")) {
+            return;
+        }
 
         ServerPlayerEntity owner = null;
 
         Object[] args = translatable.getArgs();
         Text who = null;
-        if (args != null && args.length > 0 && args[0] instanceof Text t) {
-            who = t;
+
+        if (args != null && args.length > 0 && args[0] instanceof Text text) {
+            who = text;
         }
 
         if (who != null) {
-            for (ServerPlayerEntity p : this.players) {
-                if (who.equals(p.getDisplayName()) || who.equals(p.getName())) {
-                    owner = p;
+            for (ServerPlayerEntity player : this.players) {
+                if (
+                        who.equals(player.getDisplayName())
+                                || who.equals(player.getName())
+                ) {
+                    owner = player;
                     break;
                 }
             }
         }
 
         if (owner == null && who != null) {
-            String displayArg = who.getString();
-            owner = findBestByLongestContains(displayArg);
+            owner = shadowchat$findBestByLongestContains(who.getString());
         }
 
         if (owner == null) {
-            String full = message.getString();
-            owner = findBestByLongestContains(full);
+            owner = shadowchat$findBestByLongestContains(message.getString());
         }
 
-        if (owner == null) return;
+        if (owner == null) {
+            return;
+        }
 
-        Text formatted = AdvancementFormatManager.INSTANCE.formatFromVanilla(owner, message);
+        Text formatted =
+                AdvancementFormatManager.INSTANCE.formatFromVanilla(owner, message);
 
-        if (formatted.equals(message)) return;
+        if (formatted.equals(message)) {
+            return;
+        }
 
         for (ServerPlayerEntity viewer : this.players) {
             viewer.sendMessage(formatted, overlay);
@@ -76,19 +119,24 @@ public class PlayerManagerMixin {
     }
 
     @Unique
-    private ServerPlayerEntity findBestByLongestContains(String text) {
-        if (text == null || text.isEmpty()) return null;
+    private ServerPlayerEntity shadowchat$findBestByLongestContains(String text) {
+        if (text == null || text.isEmpty()) {
+            return null;
+        }
 
         ServerPlayerEntity best = null;
-        int bestLen = -1;
+        int bestLength = -1;
 
-        for (ServerPlayerEntity p : this.players) {
-            String raw = p.getGameProfile().getName();
-            if (raw == null || raw.isEmpty()) continue;
+        for (ServerPlayerEntity player : this.players) {
+            String rawName = player.getGameProfile().getName();
 
-            if (text.contains(raw) && raw.length() > bestLen) {
-                best = p;
-                bestLen = raw.length();
+            if (rawName == null || rawName.isEmpty()) {
+                continue;
+            }
+
+            if (text.contains(rawName) && rawName.length() > bestLength) {
+                best = player;
+                bestLength = rawName.length();
             }
         }
 
